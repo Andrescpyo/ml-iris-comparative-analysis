@@ -8,6 +8,7 @@ import streamlit as st
 from matplotlib.figure import Figure
 from sklearn.base import clone
 from sklearn.metrics import confusion_matrix
+from sklearn.inspection import permutation_importance
 
 from src.classifier_factory import create_classifiers
 from src.data_loader import get_iris_data
@@ -148,6 +149,38 @@ def build_exploration_2d(features: pd.DataFrame, targets: pd.Series) -> Figure:
     return figure
 
 
+def build_sepal_exploration(
+    features: pd.DataFrame,
+    targets: pd.Series,
+) -> Figure:
+    """Build the pure SL versus SW dataset exploration plot.
+
+    Args:
+        features: Complete Iris feature matrix.
+        targets: Complete Iris target vector.
+
+    Returns:
+        Figure: Sepal scatter plot without model regions or predictions.
+    """
+    plot_data = features[["sepal length", "sepal width"]].copy()
+    plot_data["class"] = targets.to_numpy()
+    figure, axis = plt.subplots(figsize=(9, 5))
+    sns.scatterplot(
+        data=plot_data,
+        x="sepal length",
+        y="sepal width",
+        hue="class",
+        palette="viridis",
+        ax=axis,
+    )
+    axis.set_title("Exploración del Dataset: Largo vs Ancho del Sépalo")
+    axis.set_xlabel("Largo del Sépalo (LS)")
+    axis.set_ylabel("Ancho del Sépalo (AS)")
+    axis.grid(alpha=0.25)
+    figure.tight_layout()
+    return figure
+
+
 def build_exploration_3d(
     features: pd.DataFrame,
     targets: pd.Series,
@@ -186,8 +219,9 @@ def build_decision_boundary(
     X_test: pd.DataFrame,
     y_train: pd.Series,
     y_test: pd.Series,
+    feature_pair: list[str] | tuple[str, str] = PETAL_FEATURES,
 ) -> Figure:
-    """Build LP/AP decision regions and highlight test-set errors.
+    """Build two-dimensional decision regions and highlight test errors.
 
     Args:
         model: Fitted full-feature classifier whose algorithm is visualized.
@@ -195,27 +229,32 @@ def build_decision_boundary(
         X_test: Test feature matrix plotted over the regions.
         y_train: Training targets used to fit the two-dimensional projection.
         y_test: Test targets used to identify incorrect predictions.
+        feature_pair: Two feature names used as the projected plane.
 
     Returns:
         Figure: Decision-region plot with test observations and errors.
     """
+    feature_pair = list(feature_pair)
     boundary_model = clone(model)
-    boundary_model.fit(X_train[PETAL_FEATURES], y_train)
-    x_values = X_train["petal length"]
-    y_values = X_train["petal width"]
+    boundary_model.fit(X_train[feature_pair], y_train)
+    x_values = X_train[feature_pair[0]]
+    y_values = X_train[feature_pair[1]]
+    x_margin = max((x_values.max() - x_values.min()) * 0.08, 0.2)
+    y_margin = max((y_values.max() - y_values.min()) * 0.08, 0.2)
+    x_max = max(x_values.max() + x_margin, 8.0) if feature_pair == PETAL_FEATURES else x_values.max() + x_margin
     x_grid, y_grid = np.meshgrid(
-        np.linspace(x_values.min() - 0.2, 8.0, 250),
-        np.linspace(y_values.min() - 0.2, y_values.max() + 0.2, 250),
+        np.linspace(x_values.min() - x_margin, x_max, 250),
+        np.linspace(y_values.min() - y_margin, y_values.max() + y_margin, 250),
     )
     grid = pd.DataFrame({
-        "petal length": x_grid.ravel(),
-        "petal width": y_grid.ravel(),
+        feature_pair[0]: x_grid.ravel(),
+        feature_pair[1]: y_grid.ravel(),
     })
     grid_predictions = boundary_model.predict(grid)
     classes = list(boundary_model.classes_)
     class_codes = {label: code for code, label in enumerate(classes)}
     regions = np.array([class_codes[label] for label in grid_predictions])
-    test_predictions = boundary_model.predict(X_test[PETAL_FEATURES])
+    test_predictions = boundary_model.predict(X_test[feature_pair])
     errors = np.asarray(y_test) != np.asarray(test_predictions)
 
     figure, axis = plt.subplots(figsize=(9, 5))
@@ -227,11 +266,11 @@ def build_decision_boundary(
         alpha=0.3,
         cmap="viridis",
     )
-    # La malla fija sépalos implícitamente al excluirlos: así la geometría
-    # muestra la separación que el algoritmo aprende específicamente en LP/AP.
+    # La proyección reentrena el algoritmo con solo dos variables para que
+    # cada región corresponda exactamente al plano visualizado.
     sns.scatterplot(
-        x=X_test["petal length"],
-        y=X_test["petal width"],
+        x=X_test[feature_pair[0]],
+        y=X_test[feature_pair[1]],
         hue=y_test,
         palette="viridis",
         edgecolor="black",
@@ -239,20 +278,101 @@ def build_decision_boundary(
     )
     if errors.any():
         axis.scatter(
-            X_test.loc[errors, "petal length"],
-            X_test.loc[errors, "petal width"],
+            X_test.loc[errors, feature_pair[0]],
+            X_test.loc[errors, feature_pair[1]],
             marker="x",
             c="red",
             s=100,
             linewidths=2.5,
             label="Predicción incorrecta",
         )
-    axis.set_title("Frontera de Decisión: LP vs AP (solo conjunto de prueba)")
-    axis.set_xlabel("Largo del Pétalo (LP)")
-    axis.set_ylabel("Ancho del Pétalo (AP)")
-    axis.set_xlim(x_values.min() - 0.2, 8.0)
+    axis.set_title(
+        f"Frontera de Decisión: {FEATURE_LABELS[feature_pair[0]]} "
+        f"vs {FEATURE_LABELS[feature_pair[1]]}"
+    )
+    axis.set_xlabel(FEATURE_LABELS[feature_pair[0]])
+    axis.set_ylabel(FEATURE_LABELS[feature_pair[1]])
+    axis.set_xlim(x_values.min() - x_margin, x_max)
+    axis.set_ylim(y_values.min() - y_margin, y_values.max() + y_margin)
     axis.grid(alpha=0.2)
     axis.legend()
+    figure.tight_layout()
+    return figure
+
+
+def build_simulator_boundaries(
+    models: dict,
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    sample: pd.DataFrame,
+) -> Figure:
+    """Build one petal boundary and virtual-flower point per classifier.
+
+    Args:
+        models: Fitted classifiers keyed by display name.
+        X_train: Training features used to fit projected classifiers.
+        y_train: Training targets used to calculate the regions.
+        sample: One virtual flower with all four feature values.
+
+    Returns:
+        Figure: Horizontal three-panel figure with model regions and the
+            virtual flower highlighted in every panel.
+    """
+    figure, axes = plt.subplots(
+        1,
+        len(models),
+        figsize=(18, 5),
+        squeeze=False,
+    )
+    x_values = X_train[PETAL_FEATURES[0]]
+    y_values = X_train[PETAL_FEATURES[1]]
+    x_margin = max((x_values.max() - x_values.min()) * 0.08, 0.2)
+    y_margin = max((y_values.max() - y_values.min()) * 0.08, 0.2)
+    x_max = max(x_values.max() + x_margin, 8.0)
+    x_grid, y_grid = np.meshgrid(
+        np.linspace(x_values.min() - x_margin, x_max, 250),
+        np.linspace(y_values.min() - y_margin, y_values.max() + y_margin, 250),
+    )
+    grid = pd.DataFrame({
+        PETAL_FEATURES[0]: x_grid.ravel(),
+        PETAL_FEATURES[1]: y_grid.ravel(),
+    })
+
+    for axis, (name, model) in zip(axes[0], models.items()):
+        projected_model = clone(model)
+        projected_model.fit(X_train[PETAL_FEATURES], y_train)
+        predictions = projected_model.predict(grid)
+        classes = list(projected_model.classes_)
+        class_codes = {label: code for code, label in enumerate(classes)}
+        regions = np.array([class_codes[label] for label in predictions])
+        axis.contourf(
+            x_grid,
+            y_grid,
+            regions.reshape(x_grid.shape),
+            levels=np.arange(len(classes) + 1) - 0.5,
+            alpha=0.35,
+            cmap="viridis",
+        )
+        axis.scatter(
+            sample["petal length"].iloc[0],
+            sample["petal width"].iloc[0],
+            marker="*",
+            s=420,
+            c="yellow",
+            edgecolors="black",
+            linewidths=1.8,
+            zorder=3,
+            label="Lirio virtual",
+        )
+        axis.set_title(name)
+        axis.set_xlabel("Largo del Pétalo (LP)")
+        axis.set_ylabel("Ancho del Pétalo (AP)")
+        axis.set_xlim(x_values.min() - x_margin, x_max)
+        axis.set_ylim(y_values.min() - y_margin, y_values.max() + y_margin)
+        axis.grid(alpha=0.2)
+        axis.legend(loc="best")
+
+    figure.suptitle("Ubicación del lirio virtual en cada frontera de decisión")
     figure.tight_layout()
     return figure
 
@@ -289,6 +409,64 @@ def build_confusion_matrix(
     axis.set_title("Matriz de Confusión")
     axis.set_xlabel("Clase Predicha")
     axis.set_ylabel("Clase Real")
+    figure.tight_layout()
+    return figure
+
+
+def build_feature_importance(
+    model,
+    X_test: pd.DataFrame,
+    y_test: pd.Series,
+) -> Figure:
+    """Build feature-importance bars for any fitted classifier.
+
+    Args:
+        model: Fitted classifier trained on the four Iris features.
+        X_test: Test feature matrix used for model-agnostic importance.
+        y_test: Test target vector used to measure accuracy.
+
+    Returns:
+        Figure: Horizontal bar chart ordered by importance values.
+    """
+    if hasattr(model, "feature_importances_"):
+        importances = model.feature_importances_
+        importance_label = "Reducción de entropía normalizada"
+    else:
+        permutation = permutation_importance(
+            model,
+            X_test,
+            y_test,
+            scoring="accuracy",
+            n_repeats=20,
+            random_state=42,
+        )
+        importances = permutation.importances_mean
+        importance_label = "Disminución media de precisión"
+
+    importance_data = pd.DataFrame(
+        {
+            "feature": FEATURE_NAMES,
+            "importance": importances,
+        }
+    ).sort_values("importance", ascending=True)
+    figure, axis = plt.subplots(figsize=(7, 3.5))
+    sns.barplot(
+        data=importance_data,
+        x="importance",
+        y="feature",
+        hue="feature",
+        palette="viridis",
+        legend=False,
+        ax=axis,
+    )
+    axis.set_title("Importancia de características")
+    axis.set_xlabel(importance_label)
+    axis.set_ylabel("Característica")
+    minimum = importance_data["importance"].min()
+    maximum = importance_data["importance"].max()
+    margin = max((maximum - minimum) * 0.15, 0.05)
+    axis.set_xlim(minimum - margin, maximum + margin)
+    axis.axvline(0, color="black", linewidth=0.8)
     figure.tight_layout()
     return figure
 
@@ -345,6 +523,13 @@ def render_simulator(features: pd.DataFrame) -> None:
                 st.info(f"🌼 {name}: {prediction}")
             else:
                 st.warning(f"🌺 {name}: {prediction}")
+    st.subheader("Ubicación geométrica del lirio virtual")
+    X_train, _, y_train, _ = load_dataset()[2]
+    st.pyplot(
+        build_simulator_boundaries(models, X_train, y_train, sample),
+        use_container_width=True,
+    )
+    plt.close("all")
 
 
 def render_general_view(
@@ -380,9 +565,20 @@ def render_general_view(
         use_container_width=True,
         hide_index=True,
     )
-    st.subheader("Exploración 2D: LP vs AP")
-    st.pyplot(build_exploration_2d(features, targets), use_container_width=True)
-    plt.close("all")
+    st.subheader("Exploración 2D")
+    petal_column, sepal_column = st.columns(2)
+    with petal_column:
+        st.pyplot(
+            build_exploration_2d(features, targets),
+            use_container_width=True,
+        )
+        plt.close("all")
+    with sepal_column:
+        st.pyplot(
+            build_sepal_exploration(features, targets),
+            use_container_width=True,
+        )
+        plt.close("all")
     st.subheader("Exploración 3D")
     st.pyplot(build_exploration_3d(features, targets), use_container_width=True)
     plt.close("all")
@@ -426,7 +622,17 @@ def render_individual_view(
         use_container_width=True,
     )
     plt.close("all")
-    st.subheader("Frontera de Decisión")
+    st.subheader("Importancia de las características")
+    st.caption(
+        "El árbol usa reducción de entropía; KNN y Naive Bayes usan "
+        "importancia por permutación sobre el conjunto de prueba."
+    )
+    st.pyplot(
+        build_feature_importance(model, X_test, y_test),
+        use_container_width=True,
+    )
+    plt.close("all")
+    st.subheader("Frontera de Decisión: Pétalos")
     st.pyplot(
         build_decision_boundary(
             model,
@@ -434,6 +640,19 @@ def render_individual_view(
             X_test,
             y_train,
             y_test,
+        ),
+        use_container_width=True,
+    )
+    plt.close("all")
+    st.subheader("Frontera de Decisión: Sépalos")
+    st.pyplot(
+        build_decision_boundary(
+            model,
+            X_train,
+            X_test,
+            y_train,
+            y_test,
+            feature_pair=("sepal length", "sepal width"),
         ),
         use_container_width=True,
     )
