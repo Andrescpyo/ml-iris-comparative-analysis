@@ -27,6 +27,26 @@ FEATURE_LABELS = {
     "petal length": "Largo del Pétalo",
     "petal width": "Ancho del Pétalo",
 }
+PRESETS = {
+    "Ejemplo Setosa": {
+        "sepal length": 5.0,
+        "sepal width": 3.4,
+        "petal length": 1.5,
+        "petal width": 0.2,
+    },
+    "Ejemplo Versicolor": {
+        "sepal length": 5.9,
+        "sepal width": 2.8,
+        "petal length": 4.3,
+        "petal width": 1.3,
+    },
+    "Ejemplo Virginica": {
+        "sepal length": 6.5,
+        "sepal width": 3.0,
+        "petal length": 5.5,
+        "petal width": 2.0,
+    },
+}
 
 
 @st.cache_data
@@ -184,7 +204,7 @@ def build_decision_boundary(
     x_values = X_train["petal length"]
     y_values = X_train["petal width"]
     x_grid, y_grid = np.meshgrid(
-        np.linspace(x_values.min() - 0.2, x_values.max() + 0.2, 250),
+        np.linspace(x_values.min() - 0.2, 8.0, 250),
         np.linspace(y_values.min() - 0.2, y_values.max() + 0.2, 250),
     )
     grid = pd.DataFrame({
@@ -230,6 +250,7 @@ def build_decision_boundary(
     axis.set_title("Frontera de Decisión: LP vs AP (solo conjunto de prueba)")
     axis.set_xlabel("Largo del Pétalo (LP)")
     axis.set_ylabel("Ancho del Pétalo (AP)")
+    axis.set_xlim(x_values.min() - 0.2, 8.0)
     axis.grid(alpha=0.2)
     axis.legend()
     figure.tight_layout()
@@ -273,30 +294,57 @@ def build_confusion_matrix(
 
 
 def render_simulator(features: pd.DataFrame) -> None:
-    """Render the flower sliders and live predictions from all models.
+    """Render preset controls, flower inputs, and submitted predictions.
 
     Args:
         features: Complete feature matrix used to define valid slider ranges.
     """
     st.subheader("Simulador de una flor Iris")
-    values = {}
-    columns = st.columns(4)
-    for column, feature in zip(columns, FEATURE_NAMES):
+    preset_columns = st.columns(len(PRESETS))
+    for column, (preset_name, preset_values) in zip(
+        preset_columns,
+        PRESETS.items(),
+    ):
         with column:
-            values[feature] = st.slider(
-                FEATURE_LABELS[feature],
-                min_value=float(features[feature].min()),
-                max_value=float(features[feature].max()),
-                value=float(features[feature].median()),
-                step=0.1,
-            )
+            if st.button(preset_name, use_container_width=True):
+                for feature, value in preset_values.items():
+                    st.session_state[f"simulator_{feature}"] = value
+
+    for feature in FEATURE_NAMES:
+        state_key = f"simulator_{feature}"
+        if state_key not in st.session_state:
+            st.session_state[state_key] = float(features[feature].median())
+
+    with st.form("iris_simulator_form"):
+        values = {}
+        columns = st.columns(4)
+        for column, feature in zip(columns, FEATURE_NAMES):
+            with column:
+                values[feature] = st.slider(
+                    FEATURE_LABELS[feature],
+                    min_value=float(features[feature].min()),
+                    max_value=float(features[feature].max()),
+                    step=0.1,
+                    key=f"simulator_{feature}",
+                )
+        submitted = st.form_submit_button("Simular", type="primary")
+
+    if not submitted:
+        return
+
     sample = pd.DataFrame([values], columns=FEATURE_NAMES)
     models = fit_models()
-    st.subheader("Predicciones en vivo")
+    st.subheader("Predicciones")
     result_columns = st.columns(len(models))
     for column, (name, model) in zip(result_columns, models.items()):
+        prediction = str(model.predict(sample)[0])
         with column:
-            st.metric(name, str(model.predict(sample)[0]))
+            if "setosa" in prediction.lower():
+                st.success(f"🌸 {name}: {prediction}")
+            elif "versicolor" in prediction.lower():
+                st.info(f"🌼 {name}: {prediction}")
+            else:
+                st.warning(f"🌺 {name}: {prediction}")
 
 
 def render_general_view(
