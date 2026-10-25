@@ -1,1 +1,46 @@
+# Entornos virtuales
 venv/
+.venv/
+env/
+ENV/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data Science outputs and local data
+data/
+datasets/
+*.csv
+*.tsv
+*.parquet
+*.feather
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+*.joblib
+models/
+outputs/
+artifacts/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# IDEs and operating system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp

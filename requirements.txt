@@ -1,3 +1,6 @@
 scikit-learn
 ucimlrepo
 pandas
+matplotlib
+seaborn
+streamlit
