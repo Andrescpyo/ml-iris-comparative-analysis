@@ -22,4 +22,10 @@ def get_iris_data(test_size=0.3, random_state=42):
     # two-dimensional data and avoids estimator format warnings.
     y = iris.data.targets.values.ravel() 
 
-    return train_test_split(X, y, test_size=test_size, random_state=random_state)
+    return train_test_split(
+        X,
+        y,
+        test_size=test_size,
+        random_state=random_state,
+        stratify=y,
+    )

@@ -29,6 +29,40 @@ El análisis utiliza el clásico dataset Iris para estudiar el comportamiento de
 - 🎛️ Ajuste interactivo de hiperparámetros para KNN y el árbol de decisión.
 - 🧮 Análisis de importancia de características mediante reducción de entropía y permutación.
 
+## 🧪 Metodología Experimental
+
+- El dataset Iris contiene **150 muestras**, **3 clases** y **4 características**: largo/ancho del sépalo y largo/ancho del pétalo.
+- La división actual utiliza `test_size=0.3` y `random_state=42`: **70 % (105 muestras) para entrenamiento** y **30 % (45 muestras) para pruebas**.
+- C4.5, KNN y Naive Bayes se entrenan con las cuatro características. La precisión se calcula sobre el conjunto de prueba mediante `accuracy_score`.
+- El tiempo de entrenamiento y el tiempo de predicción se miden por separado.
+- Los modelos entrenados permanecen en memoria durante la ejecución de la aplicación, pero no se serializan ni se guardan automáticamente en disco.
+- Las fronteras de decisión 2D utilizan modelos auxiliares reentrenados con dos características —pétalos o sépalos— únicamente para representar sus regiones geométricas.
+
+### 📊 Estratificación de la partición
+
+La partición utiliza `stratify=y`:
+
+```python
+train_test_split(
+    X,
+    y,
+    test_size=0.3,
+    random_state=42,
+    stratify=y,
+)
+```
+
+`train_test_split` realiza una partición aleatoria reproducible que conserva aproximadamente la proporción original de cada clase en ambos subconjuntos. En Iris, cada clase tiene 50 muestras, por lo que la partición resultante es:
+
+| Clase | Entrenamiento | Prueba |
+|---|---:|---:|
+| Setosa | 35 | 15 |
+| Versicolor | 35 | 15 |
+| Virginica | 35 | 15 |
+| **Total** | **105** | **45** |
+
+Esto hace más comparable la precisión entre clases y reduce el riesgo de que la partición quede accidentalmente desbalanceada. `stratify=y` no aumenta los datos ni mejora automáticamente los modelos; únicamente controla cómo se distribuyen las clases entre entrenamiento y prueba.
+
 ## 🛠️ Tecnologías Utilizadas
 
 - 🐍 **Python**
