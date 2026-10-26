@@ -478,6 +478,13 @@ def render_simulator(features: pd.DataFrame) -> None:
         features: Complete feature matrix used to define valid slider ranges.
     """
     st.subheader("Simulador de una flor Iris")
+    st.markdown(
+        "**Inferencia de Datos Desconocidos:** Este simulador representa el "
+        "uso del conocimiento generado por el sistema. Ajusta las 4 "
+        "características biológicas para ver en tiempo real cómo cada modelo "
+        "clasifica un ejemplo de naturaleza completamente desconocida "
+        "basándose en las regiones de decisión aprendidas."
+    )
     preset_columns = st.columns(len(PRESETS))
     for column, (preset_name, preset_values) in zip(
         preset_columns,
@@ -543,10 +550,30 @@ def render_general_view(
         targets: Complete Iris target vector.
     """
     st.header("Vista General")
-    st.write(
-        "Comparación global de los clasificadores y exploración visual pura "
-        "del dataset, sin regiones calculadas por modelos."
+    st.markdown(
+        "**Introducción al Proyecto**\n"
+        "Bienvenido a la plataforma de experimentación interactiva para el "
+        "análisis de clasificadores de Aprendizaje Automático. Este proyecto "
+        "de ingeniería, desarrollado para la Universidad Distrital, tiene "
+        "como objetivo central entrenar, evaluar y comparar empíricamente el "
+        "rendimiento de tres algoritmos fundamentales (Árboles de Decisión "
+        "C4.5, K-Nearest Neighbors y Naive Bayes) aplicados al clásico "
+        "conjunto de datos Iris. A través de este panel, se contrastarán "
+        "las métricas de precisión y tiempos computacionales con el "
+        "comportamiento geométrico de las fronteras de decisión, permitiendo "
+        "una comprensión profunda de cómo cada modelo sintetiza el "
+        "conocimiento para clasificar nuevas instancias."
     )
+    st.markdown(
+        "**Muestra de Datos Crudos:** A continuación se presenta un extracto "
+        "de las instancias sin procesar. Cada fila representa una flor "
+        "caracterizada por cuatro mediciones continuas y su etiqueta "
+        "biológica, formando la base empírica sobre la cual los algoritmos "
+        "sintetizarán el conocimiento."
+    )
+    raw_data = features.copy()
+    raw_data["class"] = targets.to_numpy()
+    st.dataframe(raw_data.head(10), use_container_width=True, hide_index=True)
     st.subheader("Tabla comparativa global")
     metrics = evaluate_models()
     st.dataframe(
@@ -573,15 +600,32 @@ def render_general_view(
             use_container_width=True,
         )
         plt.close("all")
+        st.caption(
+            "Este plano bidimensional demuestra una alta separabilidad "
+            "lineal. La clase Setosa se aísla completamente, lo que "
+            "facilitará su clasificación matemática."
+        )
     with sepal_column:
         st.pyplot(
             build_sepal_exploration(features, targets),
             use_container_width=True,
         )
         plt.close("all")
+        st.caption(
+            "A diferencia de los pétalos, los sépalos presentan una densa "
+            "superposición espacial entre Versicolor y Virginica, "
+            "convirtiéndose en variables ruidosas que inducen a la "
+            "confusión de los modelos."
+        )
     st.subheader("Exploración 3D")
     st.pyplot(build_exploration_3d(features, targets), use_container_width=True)
     plt.close("all")
+    st.caption(
+        "Proyección Tridimensional: Al visualizar tres características "
+        "simultáneamente, se aprecia la profundidad de los clústeres. La "
+        "separación es más evidente, justificando por qué los modelos logran "
+        "precisiones altas al procesar el hiperespacio completo."
+    )
 
 
 def render_individual_view(
@@ -602,6 +646,25 @@ def render_individual_view(
             "Naive Bayes",
         ],
     )
+    if selected_name == "C4.5 (Árbol de Decisión)":
+        st.info(
+            "Este algoritmo divide el espacio realizando cortes ortogonales "
+            "(rectos) buscando la mayor ganancia de información y reducción "
+            "de impureza en cada nodo."
+        )
+    elif selected_name == "K-Nearest Neighbors (KNN)":
+        st.info(
+            "Al ser un modelo basado en instancias, no crea una abstracción "
+            "matemática rígida, sino que traza fronteras adaptativas "
+            "dependiendo de la clase mayoritaria de los vecinos más cercanos."
+        )
+    else:
+        st.info(
+            "Este clasificador probabilístico traza curvas de decisión "
+            "suaves calculando la probabilidad estadística de cada clase, "
+            "asumiendo ingenuamente que todas las variables son "
+            "independientes."
+        )
     knn_neighbors = 3
     tree_max_depth = None
     if selected_name == "K-Nearest Neighbors (KNN)":
@@ -616,22 +679,39 @@ def render_individual_view(
 
     model = create_classifiers(knn_neighbors, tree_max_depth)[selected_name]
     model.fit(X_train, y_train)
+    st.markdown(
+        "**Análisis de Aciertos y Fallos:** La diagonal principal (cuadros "
+        "oscuros) cuantifica las clasificaciones correctas. Los errores "
+        "(fuera de la diagonal) se ubican típicamente en la intersección "
+        "predictiva entre Versicolor y Virginica debido a su extrema "
+        "similitud biológica en las medidas del sépalo."
+    )
     st.subheader("Matriz de Confusión")
     st.pyplot(
         build_confusion_matrix(model, X_test, y_test),
         use_container_width=True,
     )
     plt.close("all")
-    st.subheader("Importancia de las características")
-    st.caption(
-        "El árbol usa reducción de entropía; KNN y Naive Bayes usan "
-        "importancia por permutación sobre el conjunto de prueba."
+    if selected_name == "C4.5 (Árbol de Decisión)":
+        st.subheader("Importancia de las características")
+        st.markdown(
+            "**Ganancia de Información:** Este diagrama cuantifica "
+            "matemáticamente qué variables aportan más peso a la decisión. "
+            "Confirma que el largo y ancho del pétalo dominan la estructura "
+            "del árbol, reduciendo la entropía del sistema de manera mucho "
+            "más eficiente que los sépalos."
+        )
+        st.pyplot(
+            build_feature_importance(model, X_test, y_test),
+            use_container_width=True,
+        )
+        plt.close("all")
+    st.markdown(
+        "**Mapeo Geométrico:** Estas áreas de color proyectan el 'territorio' "
+        "asignado a cada clase en un plano 2D. Las cruces rojas (**X**) "
+        "marcan los datos de prueba clasificados incorrectamente, ilustrando "
+        "cómo la superposición espacial engaña a la lógica del algoritmo."
     )
-    st.pyplot(
-        build_feature_importance(model, X_test, y_test),
-        use_container_width=True,
-    )
-    plt.close("all")
     st.subheader("Frontera de Decisión: Pétalos")
     st.pyplot(
         build_decision_boundary(
